@@ -62,14 +62,28 @@ function startSobrietyTracking(bot, chatId) {
   bot.sendMessage(chatId, "Выберите действие:", opts);
 }
 
+function askFoodChoice(bot, chatId) {
+  userStates[chatId].state = States.AWAITING_FOOD_CHOICE;
+  const opts = {
+    reply_markup: JSON.stringify({
+      keyboard: [
+        ["Да, подобрать к еде"],
+        ["Нет, продолжить без еды"]
+      ],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    }),
+  };
+  bot.sendMessage(chatId, "Хотите подобрать вино к конкретному блюду?", opts);
+}
+
 async function generateWineRecommendation(userState) {
   const { weather, mood, wineType, wineSweetness, winePrice } = userState;
   const temperature = weather.temperature;
   const weatherDescription = weather.description;
   const feels_like = weather.feels_like;
   const humidity = weather.humidity;
-
-
+  const foodType = userState.foodType || "не указано";
 
   try {
     const completion = await openai.chat.completions.create({
@@ -88,6 +102,7 @@ async function generateWineRecommendation(userState) {
           Тип вина: ${wineType}
           Сладость: ${wineSweetness}
           Ценовой диапазон: ${winePrice}
+          Блюдо: ${foodType}
           Пожалуйста, дайте название конкретного вина и его краткое описание.
           Описание должно быть структурировано следующим образом:
           Рекомендую попробовать вино "название вина".
@@ -96,6 +111,7 @@ async function generateWineRecommendation(userState) {
           Польза в зависимости от состояния.
           Соответствие температуре.
           Влияние погоды.
+          Сочетание с едой (если указано блюдо) или рекомендации по сочетанию с едой (если блюдо не указано).
           Ценовая доступность и общая рекомендация.
           Каждое предложение должно начинаться с новой строки и быть не длиннее 400 символов.
           Используйте только разметку для телеграмма.`,
@@ -142,4 +158,4 @@ async function checkSobrietyStatus(bot, chatId) {
   }
 }
 
-module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus };
+module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus, askFoodChoice };
