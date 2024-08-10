@@ -22,6 +22,8 @@ const {
   weatherService,
   geocodingService,
 } = require("./utils/weatherServiceInstance");
+const { handleFoodType } = require("./states/awaitingFoodTypeState");
+const { handleFoodChoice } = require("./states/awaitingFoodChoiceState");
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
@@ -56,6 +58,12 @@ bot.on("text", async (msg) => {
       break;
     case States.AWAITING_WINE_PRICE:
       await handleWinePriceInput(bot, chatId, text);
+      break;
+    case States.AWAITING_FOOD_CHOICE:
+      await handleFoodChoice(bot, chatId, text);
+      break;
+    case States.AWAITING_FOOD_TYPE:
+      await handleFoodType(bot, chatId, text);
       break;
     case States.SOBRIETY_MENU:
       await handleSobrietyMenu(bot, chatId, text);
