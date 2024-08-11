@@ -10,6 +10,7 @@ function sendMainMenu(bot, chatId, message) {
     reply_markup: JSON.stringify({
       keyboard: [
         ["🍷 Выбрать вино"],
+        ["💬 Свободный запрос"],
         ["🚱 Отслеживание трезвости"],
         ["ℹ️ Помощь"],
       ],
@@ -25,6 +26,7 @@ function sendHelp(bot, chatId) {
   const helpText = `
   Вот что я умею:
   🍷 Выбрать вино - я помогу подобрать вино с учетом погоды и вашего настроения
+  💬 Свободный запрос - опишите свои пожелания, и я постараюсь подобрать вино
   🚱 Отслеживание трезвости - помогу отслеживать дни без алкоголя
   ℹ️ Помощь - покажу это сообщение
 
@@ -32,7 +34,7 @@ function sendHelp(bot, chatId) {
   /start - начать взаимодействие с ботом
   /help - показать это сообщение помощи
 
-  Чтобы начать, просто выберите нужное действие в меню или используйте команду /start.
+  Вы можете использовать структурированный подход выбора вина или просто описать свои пожелания в свободной форме.
   `;
   bot.sendMessage(chatId, helpText);
 }
@@ -87,7 +89,7 @@ async function generateWineRecommendation(userState) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o-2024-08-06",
       messages: [
         {
           role: "system",
@@ -158,4 +160,4 @@ async function checkSobrietyStatus(bot, chatId) {
   }
 }
 
-module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus, askFoodChoice };
+module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus, askFoodChoice};
