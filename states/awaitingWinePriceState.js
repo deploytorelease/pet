@@ -8,7 +8,7 @@ async function handleWinePriceInput(bot, chatId, winePrice) {
   await bot.sendMessage(chatId, "Отлично! Сейчас подберу для вас идеальное вино, учитывая погоду, ваше настроение и предпочтения.");
 
   const recommendation = await generateWineRecommendation(userStates[chatId]);
-  await bot.sendMessage(chatId, recommendation);
+  await bot.sendMessage(chatId, recommendation, { parse_mode: 'Markdown' });
 
   sendMainMenu(bot, chatId, "Что бы вы хотели сделать дальше?");
   delete userStates[chatId];

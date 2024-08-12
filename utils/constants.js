@@ -16,5 +16,6 @@ const States = {
   
   const userStates = {};
   const sobrietyTracker = {};
+  const userCities = {};
   
-  module.exports = { States, userStates, sobrietyTracker };
+  module.exports = { States, userStates, sobrietyTracker, userCities };

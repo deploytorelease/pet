@@ -1,7 +1,7 @@
 const OpenAI = require("openai");
 const { weatherService, geocodingService } = require('../utils/weatherServiceInstance');
 const { sendMainMenu } = require('../utils/helpers');
-const { States, userStates } = require('../utils/constants');
+const { States, userStates, userCities } = require('../utils/constants');
 
 const openai = new OpenAI({
   apiKey: process.env.CHATGPT_API_KEY,
@@ -47,68 +47,82 @@ async function handleFreeInputDialog(bot, chatId, initialInput) {
   }
   
 
-async function continueFreeInputDialog(bot, chatId, input) {
-  const { stage, initialInput } = userStates[chatId];
-  if (stage === 'awaiting_city') {
-    await processRecommendation(bot, chatId, initialInput, input);
-  } else if (stage === 'awaiting_clarification') {
-    const inputAnalysis = await analyzeUserInput(input);
-    if (inputAnalysis.isRelevant) {
-      const city = await extractCity(input);
-      if (!city) {
-        userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_city', initialInput: input };
-        await bot.sendMessage(chatId, "Отлично! Для более точной рекомендации, пожалуйста, укажите ваш город.");
+  async function continueFreeInputDialog(bot, chatId, input) {
+    const { stage, initialInput } = userStates[chatId];
+    if (stage === 'awaiting_city') {
+      const city = await extractCity(input) || userCities[chatId];
+      await processRecommendation(bot, chatId, initialInput, city);
+    } else if (stage === 'awaiting_clarification') {
+      const inputAnalysis = await analyzeUserInput(input);
+      if (inputAnalysis.isRelevant) {
+        const city = await extractCity(input) || userCities[chatId];
+        if (!city) {
+          userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_city', initialInput: input };
+          await bot.sendMessage(chatId, "Отлично! Для более точной рекомендации, пожалуйста, укажите ваш город.");
+        } else {
+          await processRecommendation(bot, chatId, input, city);
+        }
       } else {
-        await processRecommendation(bot, chatId, input, city);
+        const friendlyResponse = await generateFriendlyResponse(input, true);
+        await bot.sendMessage(chatId, friendlyResponse);
+        userStates[chatId] = { state: States.IDLE };
+        await sendMainMenu(bot, chatId, "Выберите действие:");
       }
-    } else {
-      const friendlyResponse = await generateFriendlyResponse(input, true);
-      await bot.sendMessage(chatId, friendlyResponse);
-      userStates[chatId] = { state: States.IDLE };
-      await sendMainMenu(bot, chatId, "Выберите действие:");
     }
   }
-}
+  
 
 async function processWineRequest(bot, chatId, input) {
     const city = await extractCity(input);
-    if (!city) {
+    if (!city && !userCities[chatId]) {
       userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_city', initialInput: input };
-      await bot.sendMessage(chatId, "Спасибо за информацию. Для более точной рекомендации, пожалуйста, укажите ваш город.");
+      await bot.sendMessage(chatId, "Для более точной рекомендации, пожалуйста, укажите ваш город.");
     } else {
-      await processRecommendation(bot, chatId, input, city);
+      await processRecommendation(bot, chatId, input, city || userCities[chatId]);
     }
   }
+  
 
-  async function handleVagueResponse(bot, chatId) {
-    const response = await generateFriendlyResponse("вагуе", true);
-    await bot.sendMessage(chatId, response);
-    userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_input' };
+  async function analyzeUserInput(input) {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `Ты являешься ботом, который анализирует ввод пользователя. Ответь строго в формате JSON:
+            \`\`\`json
+            {
+              "isGreeting": boolean,
+              "isRelevant": boolean,
+              "explanation": string
+            }
+            \`\`\``
+          },
+          {
+            role: "user",
+            content: input
+          }
+        ],
+        max_tokens: 100
+      });
+  
+      let response = completion.choices[0].message.content;
+      console.log("API Response:", response);
+  
+      // Убираем блоки кода, если они присутствуют
+      if (response.startsWith("```json")) {
+        response = response.slice(7, -3); // Убираем ```json и ```
+      }
+  
+      return JSON.parse(response);
+    } catch (error) {
+      console.error('Error analyzing user input:', error);
+      return { isGreeting: false, isRelevant: false, explanation: "Не удалось проанализировать ввод" };
+    }
   }
-
-async function analyzeUserInput(input) {
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "Вы - аналитик, который определяет, является ли ввод пользователя приветствием, запросом о вине или чем-то другим. Ответьте JSON-объектом с полями isGreeting (boolean), isRelevant (boolean) и explanation (string)."
-        },
-        {
-          role: "user",
-          content: input
-        }
-      ],
-      max_tokens: 100
-    });
-
-    return JSON.parse(completion.choices[0].message.content);
-  } catch (error) {
-    console.error('Error analyzing user input:', error);
-    return { isGreeting: false, isRelevant: false, explanation: "Не удалось проанализировать ввод" };
-  }
-}
+  
+  
 
 async function generateFriendlyResponse(input, isVague = false) {
     try {
@@ -137,21 +151,34 @@ async function generateFriendlyResponse(input, isVague = false) {
   }
 
 
-async function processRecommendation(bot, chatId, initialInput, city) {
-  const weather = await getWeatherInfo(city);
-  const recommendation = await generateRecommendation(initialInput, city, weather);
-
-  await bot.sendMessage(chatId, recommendation, { parse_mode: 'Markdown' });
+  async function processRecommendation(bot, chatId, initialInput, city = null) {
+    let userCity = city || userCities[chatId];
   
-  userStates[chatId] = { state: States.IDLE };
-  await sendMainMenu(bot, chatId, "Что бы вы хотели сделать дальше?");
-  console.log(`Finishing handleFreeInputDialog for chatId: ${chatId}`);
-}
+    if (!userCity) {
+      userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_city', initialInput };
+      await bot.sendMessage(chatId, "Для более точной рекомендации, пожалуйста, укажите ваш город.");
+      return;
+    }
+  
+    // Сохранить город пользователя, если он не был сохранен ранее
+    if (!userCities[chatId]) {
+      userCities[chatId] = userCity;
+    }
+  
+    const weather = await getWeatherInfo(userCity);
+    const recommendation = await generateRecommendation(initialInput, userCity, weather);
+  
+    await bot.sendMessage(chatId, recommendation, { parse_mode: 'Markdown' });
+    
+    userStates[chatId] = { state: States.IDLE };
+    await sendMainMenu(bot, chatId, "Что бы вы хотели сделать дальше?");
+  }
+  
 
 async function extractCity(input) {
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-2024-08-06",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -184,8 +211,10 @@ async function generateRecommendation(input, city, weather) {
           {
             role: "system",
             content: `Вы - дружелюбный и знающий сомелье, который дает рекомендации по вину на русском языке. 
-            Ваши ответы должны быть естественными, разговорными и аппетитными, без излишней восторженности. 
+            Ваши ответы должны быть естественными, разговорными и аппетитными, без излишней восторженности.
+            Название вина давать в оригинале. 
             Используйте Markdown для форматирования:
+            - Правильно склоняй название города
             - Выделяйте названия вин жирным шрифтом: **название вина**
             - Выделяйте города курсивом: *город*
             - Подчеркивайте важные вкусовые характеристики: _характеристика_
@@ -198,6 +227,7 @@ async function generateRecommendation(input, city, weather) {
             5. *Примерная цена:* [ценовой диапазон]
             6. Заключительная фраза
             
+            Не используй нумерацию в тексте.
             Не используйте технические обозначения (###) в тексте.`
           },
           {

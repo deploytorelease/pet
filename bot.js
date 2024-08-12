@@ -4,19 +4,29 @@ const { handleStartCommand } = require("./commands/start");
 const { handleHelpCommand } = require("./commands/help");
 const { handleIdleState } = require("./states/idleState");
 const { handleCityInput } = require("./states/awaitingCityState");
-const { handleManualWeatherInput } = require("./states/awaitingManualWeatherState");
+const {
+  handleManualWeatherInput,
+} = require("./states/awaitingManualWeatherState");
 const { handleMoodInput } = require("./states/awaitingMoodState");
 const { handleWineTypeInput } = require("./states/awaitingWineTypeState");
-const { handleWineSweetnessInput } = require("./states/awaitingWineSweetnessState");
+const {
+  handleWineSweetnessInput,
+} = require("./states/awaitingWineSweetnessState");
 const { handleWinePriceInput } = require("./states/awaitingWinePriceState");
 const { handleSobrietyMenu } = require("./states/sobrietyMenuState");
-const { handleSobrietyConfirmReset } = require("./states/sobrietyConfirmResetState");
-const { States, userStates } = require("./utils/constants");
+const {
+  handleSobrietyConfirmReset,
+} = require("./states/sobrietyConfirmResetState");
+const { States, userStates, userCities } = require("./utils/constants");
 const { handleFoodType } = require("./states/awaitingFoodTypeState");
 const { handleFoodChoice } = require("./states/awaitingFoodChoiceState");
-const { handleFreeInputDialog, continueFreeInputDialog } = require("./states/freeInputHandler");
+const {
+  handleFreeInputDialog,
+  continueFreeInputDialog,
+} = require("./states/freeInputHandler");
 const { sendMainMenu } = require("./utils/helpers");
-const { startSobrietyTracking } = require('./utils/helpers');
+const { startSobrietyTracking } = require("./utils/helpers");
+const { changeCity } = require("./utils/helpers");
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
@@ -39,8 +49,10 @@ bot.on("text", async (msg) => {
   if (text === "/start" || text === "/help") return;
 
   const currentState = userStates[chatId]?.state || States.IDLE;
-  
-  console.log(`Received message: "${text}" from user ${chatId} in state ${currentState}`);
+
+  console.log(
+    `Received message: "${text}" from user ${chatId} in state ${currentState}`
+  );
 
   try {
     switch (currentState) {
@@ -51,20 +63,28 @@ bot.on("text", async (msg) => {
           await startSobrietyTracking(bot, chatId, text);
         } else if (text === "ℹ️ Помощь") {
           await handleHelpCommand(bot, msg);
+        } else if (text === "🏙️ Изменить город") {
+          await changeCity(bot, chatId);
         } else if (text === "💬 Свободный запрос") {
-          userStates[chatId] = { state: States.FREE_INPUT, stage: 'awaiting_input' };
-          await bot.sendMessage(chatId, "Опишите, какое вино вы хотите или в какой ситуации собираетесь его пить. Я постараюсь дать подходящую рекомендацию.");
+          userStates[chatId] = {
+            state: States.FREE_INPUT,
+            stage: "awaiting_input",
+          };
+          await bot.sendMessage(
+            chatId,
+            "Опишите, какое вино вы хотите или в какой ситуации собираетесь его пить. Я постараюсь дать подходящую рекомендацию."
+          );
         } else {
           await handleFreeInputDialog(bot, chatId, text);
         }
         break;
-        case States.FREE_INPUT:
-          if (userStates[chatId].stage === 'awaiting_input') {
-            await handleFreeInputDialog(bot, chatId, text);
-          } else {
-            await continueFreeInputDialog(bot, chatId, text);
-          }
-          break;
+      case States.FREE_INPUT:
+        if (userStates[chatId].stage === "awaiting_input") {
+          await handleFreeInputDialog(bot, chatId, text);
+        } else {
+          await continueFreeInputDialog(bot, chatId, text);
+        }
+        break;
       case States.AWAITING_CITY:
         await handleCityInput(bot, chatId, text);
         break;
@@ -95,15 +115,21 @@ bot.on("text", async (msg) => {
       case States.SOBRIETY_CONFIRM_RESET:
         await handleSobrietyConfirmReset(bot, chatId, text);
         break;
-        default:
-          console.log(`Unhandled state: ${currentState}`);
-          await bot.sendMessage(chatId, "Извините, произошла ошибка. Давайте начнем сначала.");
-          sendMainMenu(bot, chatId, "Выберите действие:");
-          break;
+      default:
+        console.log(`Unhandled state: ${currentState}`);
+        await bot.sendMessage(
+          chatId,
+          "Извините, произошла ошибка. Давайте начнем сначала."
+        );
+        sendMainMenu(bot, chatId, "Выберите действие:");
+        break;
     }
   } catch (error) {
     console.error(`Error processing message: ${error}`);
-    await bot.sendMessage(chatId, "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз.");
+    await bot.sendMessage(
+      chatId,
+      "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз."
+    );
     sendMainMenu(bot, chatId, "Выберите действие:");
   }
 });
