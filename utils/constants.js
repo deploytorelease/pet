@@ -11,9 +11,11 @@ const States = {
     SOBRIETY_CONFIRM_RESET: "SOBRIETY_CONFIRM_RESET",
     AWAITING_FOOD_CHOICE: "AWAITING_FOOD_CHOICE",
     AWAITING_FOOD_TYPE: "AWAITING_FOOD_TYPE",
+    FREE_INPUT: "FREE_INPUT",
   };
   
   const userStates = {};
   const sobrietyTracker = {};
+  const userCities = {};
   
-  module.exports = { States, userStates, sobrietyTracker };
+  module.exports = { States, userStates, sobrietyTracker, userCities };

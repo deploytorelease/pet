@@ -1,41 +1,16 @@
 const { weatherService, geocodingService } = require('../utils/weatherServiceInstance');
-const { States, userStates } = require('../utils/constants');
+const { States, userStates, userCities } = require('../utils/constants');
+const { updateWeatherAndProceed } = require('../utils/helpers');
 
 async function handleCityInput(bot, chatId, city) {
-  const coordinates = await geocodingService.getCoordinates(city);
-  if (!coordinates) {
-    await bot.sendMessage(
-      chatId,
-      `К сожалению, не удалось найти указанный город. Пожалуйста, проверьте название города и попробуйте снова.`
-    );
-    return;
-  }
-
-  const weatherData = await weatherService.getWeather(coordinates.lat, coordinates.lon);
-  if (weatherData) {
-    const { temperature, description, feelsLike, humidity, windSpeed } = weatherData;
-    await bot.sendMessage(
-      chatId,
-      `Текущая погода в указанном вами городе:
-       🌡 Температура: ${temperature}°C
-       🌤 Описание: ${description}
-       🤔 Ощущается как: ${feelsLike}°C
-       💧 Влажность: ${humidity}%
-       💨 Скорость ветра: ${windSpeed} м/с`
-    );
-
-    userStates[chatId] = {
-      state: States.AWAITING_MOOD,
-      city: city,
-      weather: weatherData,
-    };
-    await bot.sendMessage(chatId, "Как бы вы описали свое текущее настроение?");
-  } else {
-    await bot.sendMessage(
-      chatId,
-      `К сожалению, не удалось получить информацию о погоде для указанного города. Пожалуйста, опишите погоду сами (например, "20°C, солнечно").`
-    );
-    userStates[chatId] = { state: States.AWAITING_MANUAL_WEATHER };
+  console.log(`Handling city input for chatId ${chatId}: ${city}`);
+  try {
+    userCities[chatId] = city; // Сохраняем город пользователя
+    await updateWeatherAndProceed(bot, chatId, city);
+  } catch (error) {
+    console.error(`Error in handleCityInput for ${chatId}:`, error);
+    await bot.sendMessage(chatId, "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз.");
+    userStates[chatId] = { state: States.IDLE };
   }
 }
 

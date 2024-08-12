@@ -1,5 +1,6 @@
-const { States, userStates, sobrietyTracker } = require('./constants');
+const { States, userStates, sobrietyTracker, userCities } = require('./constants');
 const OpenAI = require("openai");
+const { weatherService, geocodingService } = require('./weatherServiceInstance');
 
 const openai = new OpenAI({
   apiKey: process.env.CHATGPT_API_KEY,
@@ -10,7 +11,9 @@ function sendMainMenu(bot, chatId, message) {
     reply_markup: JSON.stringify({
       keyboard: [
         ["🍷 Выбрать вино"],
+        ["💬 Свободный запрос"],
         ["🚱 Отслеживание трезвости"],
+        ["🏙️ Изменить город"],
         ["ℹ️ Помощь"],
       ],
       resize_keyboard: true,
@@ -25,6 +28,7 @@ function sendHelp(bot, chatId) {
   const helpText = `
   Вот что я умею:
   🍷 Выбрать вино - я помогу подобрать вино с учетом погоды и вашего настроения
+  💬 Свободный запрос - опишите свои пожелания, и я постараюсь подобрать вино
   🚱 Отслеживание трезвости - помогу отслеживать дни без алкоголя
   ℹ️ Помощь - покажу это сообщение
 
@@ -32,16 +36,114 @@ function sendHelp(bot, chatId) {
   /start - начать взаимодействие с ботом
   /help - показать это сообщение помощи
 
-  Чтобы начать, просто выберите нужное действие в меню или используйте команду /start.
+  Вы можете использовать структурированный подход выбора вина или просто описать свои пожелания в свободной форме.
   `;
   bot.sendMessage(chatId, helpText);
 }
 
-function startWineSelection(bot, chatId) {
+async function startWineSelection(bot, chatId) {
+  if (!userCities[chatId]) {
+    userCities[chatId] = null;
+  }
+  const savedCity = userCities[chatId];
+  
+  if (savedCity) {
+    await updateWeatherAndProceed(bot, chatId, savedCity);
+  } else {
+    userStates[chatId] = { state: States.AWAITING_CITY };
+    await bot.sendMessage(
+      chatId,
+      "Давайте подберем для вас идеальное вино. В каком городе вы находитесь?",
+      { reply_markup: { remove_keyboard: true } }
+    );
+  }
+}
+
+async function updateWeatherAndProceed(bot, chatId, city) {
+  const coordinates = await geocodingService.getCoordinates(city);
+  if (!coordinates) {
+    await bot.sendMessage(
+      chatId,
+      `К сожалению, не удалось получить координаты для города ${city}. Пожалуйста, введите название города еще раз.`
+    );
+    userStates[chatId] = { state: States.AWAITING_CITY };
+    return;
+  }
+
+  const weatherData = await weatherService.getWeather(coordinates.lat, coordinates.lon);
+  if (weatherData) {
+    userStates[chatId] = {
+      state: States.AWAITING_MOOD,
+      city: city,
+      weather: weatherData,
+    };
+    await bot.sendMessage(
+      chatId,
+      `Текущая погода в ${city}: ${weatherData.temperature}°C, ${weatherData.description}. Как бы вы описали свое текущее настроение?`
+    );
+  } else {
+    await bot.sendMessage(
+      chatId,
+      `К сожалению, не удалось получить информацию о погоде для города ${city}. Пожалуйста, опишите погоду сами (например, "20°C, солнечно").`
+    );
+    userStates[chatId] = { state: States.AWAITING_MANUAL_WEATHER };
+  }
+}
+async function updateWeatherAndProceed(bot, chatId, city) {
+  console.log(`Updating weather for ${chatId} in city ${city}`);
+  try {
+    const coordinates = await geocodingService.getCoordinates(city);
+    console.log(`Coordinates for ${city}:`, coordinates);
+    if (!coordinates) {
+      await bot.sendMessage(
+        chatId,
+        `К сожалению, не удалось получить координаты для города ${city}. Пожалуйста, введите название города еще раз.`
+      );
+      userStates[chatId] = { state: States.AWAITING_CITY };
+      return;
+    }
+
+    const weatherData = await weatherService.getWeather(coordinates.lat, coordinates.lon);
+    console.log(`Weather data for ${city}:`, weatherData);
+    if (weatherData) {
+      userStates[chatId] = {
+        state: States.AWAITING_MOOD,
+        city: city,
+        weather: weatherData,
+      };
+
+      // Сообщение с погодой
+      const weatherMessage = `
+*${city}*:
+🌡️ Температура: ${weatherData.temperature}°C
+🌥️ Ощущается как: ${weatherData.feelsLike}°C
+🌦️ Описание: ${weatherData.description.charAt(0).toUpperCase() + weatherData.description.slice(1)}
+💧 Влажность: ${weatherData.humidity}%
+🌬️ Ветер: ${weatherData.windSpeed} м/с
+
+Какое у вас сейчас настроение?`;
+
+      await bot.sendMessage(chatId, weatherMessage, { parse_mode: 'Markdown' });
+    } else {
+      await bot.sendMessage(
+        chatId,
+        `К сожалению, не удалось получить информацию о погоде для города ${city}. Пожалуйста, опишите погоду сами (например, "20°C, солнечно").`
+      );
+      userStates[chatId] = { state: States.AWAITING_MANUAL_WEATHER };
+    }
+  } catch (error) {
+    console.error(`Error in updateWeatherAndProceed for ${chatId}:`, error);
+    await bot.sendMessage(chatId, "Произошла ошибка при получении данных о погоде. Пожалуйста, попробуйте еще раз.");
+    userStates[chatId] = { state: States.IDLE };
+  }
+}
+
+
+function changeCity(bot, chatId) {
   userStates[chatId] = { state: States.AWAITING_CITY };
   bot.sendMessage(
     chatId,
-    "Давайте подберем для вас идеальное вино. В каком городе вы находитесь?",
+    "Пожалуйста, введите название нового города:",
     { reply_markup: { remove_keyboard: true } }
   );
 }
@@ -87,11 +189,28 @@ async function generateWineRecommendation(userState) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o-2024-08-06",
       messages: [
         {
           role: "system",
-          content: "Вы - эксперт по винам, который дает рекомендации на русском языке.",
+          content: `Вы - дружелюбный и знающий сомелье, который дает рекомендации по вину на русском языке. 
+            Ваши ответы должны быть естественными, разговорными и аппетитными, без излишней восторженности.
+            Название вина давать в оригинале. 
+            Используйте Markdown для форматирования:
+            - Правильно склоняй название города
+            - Выделяйте названия вин жирным шрифтом: **название вина**
+            - Подчеркивайте важные вкусовые характеристики: _характеристика_
+            
+            Структурируйте ответ следующим образом:
+            1. Краткое вступление с рекомендацией вина
+            2. *Вино:* [название вина]
+            3. *Вкус и аромат:* [описание]
+            4. *Подходящее время и сочетание:* [рекомендации]
+            5. *Примерная цена:* [ценовой диапазон]
+            6. Заключительная фраза
+            
+            Не используй нумерацию в тексте.
+            Не используйте технические обозначения (###) в тексте.`
         },
         {
           role: "user",
@@ -103,18 +222,11 @@ async function generateWineRecommendation(userState) {
           Сладость: ${wineSweetness}
           Ценовой диапазон: ${winePrice}
           Блюдо: ${foodType}
-          Пожалуйста, дайте название конкретного вина и его краткое описание.
-          Описание должно быть структурировано следующим образом:
-          Рекомендую попробовать вино "название вина".
-          Тип вина с основными нотами вкуса.
-          Его текстура и кислотность.
+          Посоветуй конкретное вино, опиши его вкус и аромат так, чтобы захотелось его попробовать. 
           Польза в зависимости от состояния.
-          Соответствие температуре.
-          Влияние погоды.
           Сочетание с едой (если указано блюдо) или рекомендации по сочетанию с едой (если блюдо не указано).
-          Ценовая доступность и общая рекомендация.
-          Каждое предложение должно начинаться с новой строки и быть не длиннее 400 символов.
-          Используйте только разметку для телеграмма.`,
+          Расскажи, почему оно подходит к погоде и моему запросу, примерную цену. 
+          Сделай ответ живым и дружелюбным, но без излишнего восторга.`,
         },
       ],
       max_tokens: 600,
@@ -158,4 +270,4 @@ async function checkSobrietyStatus(bot, chatId) {
   }
 }
 
-module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus, askFoodChoice };
+module.exports = { sendMainMenu, sendHelp, startWineSelection, startSobrietyTracking, generateWineRecommendation, extractTemperature, checkSobrietyStatus, askFoodChoice, changeCity, updateWeatherAndProceed, updateWeatherAndProceed };
