@@ -9,15 +9,13 @@ const openai = new OpenAI({
 function sendMainMenu(bot, chatId, message) {
   const opts = {
     reply_markup: JSON.stringify({
-      keyboard: [
-        ["🍷 Выбрать вино"],
-        ["💬 Свободный запрос"],
-        ["🚱 Отслеживание трезвости"],
-        ["🏙️ Изменить город"],
-        ["ℹ️ Помощь"],
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: false,
+      inline_keyboard: [
+        [{ text: "🍷 Выбрать вино", callback_data: "select_wine" }],
+        [{ text: "💬 Свободный запрос", callback_data: "free_input" }],
+        [{ text: "🚱 Отслеживание трезвости", callback_data: "sobriety_tracking" }],
+        [{ text: "🏙️ Изменить город", callback_data: "change_city" }],
+        [{ text: "ℹ️ Помощь", callback_data: "help" }],
+      ]
     }),
   };
   userStates[chatId] = { state: States.IDLE };

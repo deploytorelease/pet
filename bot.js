@@ -46,6 +46,10 @@ bot.on("text", async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
+  if (msg.via_bot) {
+    return;
+  }
+
   if (text === "/start" || text === "/help") return;
 
   const currentState = userStates[chatId]?.state || States.IDLE;
@@ -53,6 +57,57 @@ bot.on("text", async (msg) => {
   console.log(
     `Received message: "${text}" from user ${chatId} in state ${currentState}`
   );
+
+  bot.on("callback_query", async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const action = callbackQuery.data;
+
+    console.log(`Received callback query: ${action} from user ${chatId}`);
+
+    try {
+      switch (action) {
+        case "select_wine":
+          await handleIdleState(bot, chatId, "🍷 Выбрать вино");
+          break;
+        case "free_input":
+          userStates[chatId] = {
+            state: States.FREE_INPUT,
+            stage: "awaiting_input",
+          };
+          await bot.sendMessage(
+            chatId,
+            "Опишите, какое вино вы хотите или в какой ситуации собираетесь его пить. Я постараюсь дать подходящую рекомендацию."
+          );
+          break;
+        case "sobriety_tracking":
+          await startSobrietyTracking(bot, chatId);
+          break;
+        case "change_city":
+          await changeCity(bot, chatId);
+          break;
+        case "help":
+          await handleHelpCommand(bot, { chat: { id: chatId } });
+          break;
+        // Добавьте обработку других callback_query здесь
+        default:
+          console.log(`Unhandled callback query: ${action}`);
+          await bot.sendMessage(
+            chatId,
+            "Извините, произошла ошибка. Давайте начнем сначала."
+          );
+          sendMainMenu(bot, chatId, "Выберите действие:");
+      }
+    } catch (error) {
+      console.error(`Error processing callback query: ${error}`);
+      await bot.sendMessage(
+        chatId,
+        "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз."
+      );
+      sendMainMenu(bot, chatId, "Выберите действие:");
+    }
+
+    bot.answerCallbackQuery(callbackQuery.id);
+  });
 
   try {
     switch (currentState) {
